@@ -4,8 +4,8 @@ import requests
 import json
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen2.5:7b"
-DEFAULT_SYSTEM = "You are a helpful assistant."
+MODEL = "qwen3:14b"
+DEFAULT_SYSTEM = "You are a helpful assistant. /no_think"
 
 
 
@@ -33,6 +33,7 @@ def stream_response(messages: list) -> str:
 def main():
     system_prompt = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else DEFAULT_SYSTEM
     messages = [{"role": "system", "content": system_prompt}]
+    think_mode = False
 
     print(f"Model: {MODEL}")
     print(f"System: {system_prompt}\n")
@@ -53,8 +54,14 @@ def main():
             messages = [{"role": "system", "content": system_prompt}]
             print(f"System prompt updated. Conversation reset.\n")
             continue
-
-        messages.append({"role": "user", "content": user_input})
+        if user_input.lower() == "!think":
+            think_mode = not think_mode
+            state = "on" if think_mode else "off"
+            print(f"Thinking mode {state}.\n")
+            continue
+        
+        content = f"/think {user_input}" if think_mode else user_input
+        messages.append({"role": "user", "content": content})
         print("qwen: ", end="", flush=True)
         reply = stream_response(messages)
         messages.append({"role": "assistant", "content": reply})
