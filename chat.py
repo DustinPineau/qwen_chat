@@ -39,7 +39,7 @@ def main():
 
     while True:
         try:
-                user_input = input("you: ").strip()
+            user_input = input("you: ").strip()
         except  (EOFError, KeyboardInterrupt):
             print()
             break
@@ -48,7 +48,7 @@ def main():
             continue
         if user_input.lower() == "exit":
             break
-        if user_input.lower() == "system":
+        if user_input.lower() == "!system":
             system_prompt = input("new system prompt: ").strip()
             messages = [{"role": "system", "content": system_prompt}]
             print(f"System prompt updated. Conversation reset.\n")
