@@ -4,6 +4,7 @@ pkgs.mkShell {
     python313                # Python 3.13 interpreter
     python313Packages.pip    # pip package manager
     pyright                  # Python LSP server
+    postgresql               # psql client (server is on rocky9)
     stdenv.cc.cc.lib         # C++ standard library (libstdc++), required by compiled pip packages
     zlib                     # compression library (libz), required by compiled pip packages
   ];
