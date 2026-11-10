@@ -5,6 +5,9 @@ extract.py — schema-constrained invoice extraction with a local LLM via Ollama
   extract.py DIR [--dsn DSN]        extract invoice PDFs in DIR -> Postgres
   extract.py DIR --dry-run          extract and print results, no database
   extract.py DIR --model MODEL      override the default model
+
+Design rule: the model transcribes, code normalizes. Dates are copied as
+printed and parsed deterministically; numbers are copied, not recalculated.
 """
 import argparse
 import json
@@ -12,7 +15,7 @@ import os
 import pathlib
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import requests
 from pydantic import BaseModel, ValidationError, field_validator
@@ -21,8 +24,12 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 DEFAULT_MODEL = "qwen2.5:7b"
 EXTRACT_SYSTEM = (
     "Extract invoice fields exactly as written in the document. "
+    "Copy invoice_date character-for-character as printed; do not reformat it. "
+    "Copy all numbers exactly as printed; do not recalculate them. "
     "Use null if a field is absent. Do not guess or infer values."
 )
+
+DATE_FORMATS = ["%Y-%m-%d", "%b %d, %Y", "%B %d, %Y", "%m/%d/%Y", "%d %B %Y", "%d %b %Y"]
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +71,7 @@ class InvoiceLine(BaseModel):
 class Invoice(BaseModel):
     vendor_name: str
     invoice_number: str
-    invoice_date: date
+    invoice_date: str          # exactly as printed; parsed in code, not by the model
     po_number: str | None
     lines: list[InvoiceLine]
     total: float
@@ -75,6 +82,25 @@ class Invoice(BaseModel):
         if v <= 0:
             raise ValueError("total must be positive")
         return v
+
+
+def parse_date(raw: str) -> date | None:
+    for fmt in DATE_FORMATS:
+        try:
+            return datetime.strptime(raw.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def check_date(raw: str, parsed: date | None) -> list[str]:
+    """Backstop: a well-formed but absurd date must never pass as ok."""
+    if parsed is None:
+        return [f"unparseable date: {raw!r}"]
+    today = date.today()
+    if not (today - timedelta(days=365) <= parsed <= today + timedelta(days=30)):
+        return [f"implausible date: {parsed.isoformat()} (raw {raw!r})"]
+    return []
 
 
 def business_checks(inv: Invoice, tolerance: float = 0.05) -> list[str]:
@@ -144,8 +170,13 @@ def extract(pdf_path: pathlib.Path, model: str) -> dict:
         record["issues"] = [f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()]
         return record
 
-    record["payload"] = inv.model_dump(mode="json")
-    record["issues"] = business_checks(inv)
+    parsed_date = parse_date(inv.invoice_date)
+    payload = inv.model_dump(mode="json")
+    payload["invoice_date_raw"] = inv.invoice_date
+    payload["invoice_date"] = parsed_date.isoformat() if parsed_date else None
+
+    record["payload"] = payload
+    record["issues"] = check_date(inv.invoice_date, parsed_date) + business_checks(inv)
     record["status"] = "ok" if not record["issues"] else "review"
     return record
 
