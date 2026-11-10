@@ -4,7 +4,7 @@ import requests
 import json
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen3:14b"
+MODEL = "qwen2.5:7b"
 DEFAULT_SYSTEM = "You are a helpful assistant. /no_think"
 
 
